@@ -69,6 +69,8 @@ private:
 
 		glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
+		verifyExtensionFullCapabilitiesReached(glfwExtensions, &glfwExtensionCount, &extensions);
+
 		createInfo.enabledExtensionCount = glfwExtensionCount;
 		createInfo.ppEnabledExtensionNames = glfwExtensions;
 
@@ -79,16 +81,23 @@ private:
 		}
 	}
 
-	void verifyExtensionFullCapabilitiesReached(const char* retrievedExtensions, int *retrievedCount, std::vector<VkExtensionProperties>* availableExtensions) {
-		std::vector<char*> missingExtensions;
+	void verifyExtensionFullCapabilitiesReached(const char** retrievedExtensions, uint32_t* retrievedCount, std::vector<VkExtensionProperties>* availableExtensions) {
+		std::vector<const char*> missingExtensions;
 		for (const auto& avail : *availableExtensions) {
 			bool found = false;
 			for (int num = 0; num < *retrievedCount; num++) {
-				found = retrievedExtensions[num] == avail.extensionName ? true : false;
+				found = strcmp(retrievedExtensions[num], avail.extensionName);
 			}
 			if (!found) {
-				missingExtensions.push_back(&avail.extensionName);
+				const char* missing = avail.extensionName;
+				missingExtensions.push_back(missing);
 			}
+		}
+
+		std::cout << "\n___________WARNING_________" << std::endl;
+		std::cout << "Following extensions are unsupported by this machine" << std::endl;
+		for (auto & ext : missingExtensions) {
+			std::cout << "\t" << ext << std::endl;
 		}
 	}
 
@@ -98,7 +107,14 @@ private:
 		}
 	}
 
+	/*
+		After following this tutorial, you could implement automatic resource management by overloading std::shared_ptr for example. 
+		Using RAII (https://en.wikipedia.org/wiki/Resource_Acquisition_Is_Initialization) to your advantage is the recommended approach for larger Vulkan programs,
+		but for learning purposes it's always good to know what's going on behind the scenes.
+	*/
 	void cleanup() {
+		vkDestroyInstance(instance, nullptr);
+
 		glfwDestroyWindow(window);
 
 		glfwTerminate();
