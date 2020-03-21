@@ -8,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <optional>
+#include <set>
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -45,15 +46,18 @@ private:
 	GLFWwindow* window;
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
+	VkSurfaceKHR surface;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device;
 	VkQueue graphicsQueue;
+	VkQueue presentQueue;
 
 	struct QueueFamilyIndices {
 		std::optional<uint32_t> graphicsFamily;
+		std::optional<uint32_t> presentFamily;
 
 		bool isComplete(){
-			return graphicsFamily.has_value();
+			return graphicsFamily.has_value() && presentFamily.has_value();
 		}
 	};
 
@@ -80,28 +84,42 @@ private:
 		// order matters here
 		createInstance();
 		setupDebugMessenger();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
 
+	void createSurface() {
+		if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create window surface!");
+		}
+	}
+
+	//configure logical device with graphics and presentation queue families
 	void createLogicalDevice() {
 		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
-		VkDeviceQueueCreateInfo queueCreateInfo = {};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-		queueCreateInfo.queueCount = 1;
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
-		// define the priority for this queue, influencing scheduling
+		// TODO: Handle if the indices are the same. We only need to pass unique indices 
 		float queuePriority = 1.0f;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		for (uint32_t queueFamily : uniqueQueueFamilies) {
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			// define the priority for this queue, influencing scheduling
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+			queueCreateInfos.push_back(queueCreateInfo);
+		}
 
 		VkPhysicalDeviceFeatures deviceFeatures = {};
 
 		VkDeviceCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		createInfo.pQueueCreateInfos = &queueCreateInfo;
-		createInfo.queueCreateInfoCount = 1;
+		createInfo.pQueueCreateInfos = queueCreateInfos.data();
+		createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 		createInfo.pEnabledFeatures = &deviceFeatures;
 
 		//these fields are ignored in latest few versions of VK. This is for backCompat
@@ -121,6 +139,8 @@ private:
 		}
 
 		vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+		std::cout << "logical device created" << std::endl;
 	}
 
 	void pickPhysicalDevice() {
@@ -182,10 +202,19 @@ private:
 		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
+		// remember the last family we find for each requirement
+		// TODO: logic to pick one family to handle both would improve performance.
 		int i = 0;
 		for (const auto& queueFamily : queueFamilies) {
 			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 				indices.graphicsFamily = i;
+			}
+
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+
+			if (presentSupport) {
+				indices.presentFamily = i;
 			}
 
 			i++;
@@ -365,6 +394,8 @@ private:
 
 		vkDestroyDevice(device, nullptr);
 		
+		vkDestroySurfaceKHR(instance, surface, nullptr);
+
 		vkDestroyInstance(instance, nullptr);
 
 		glfwDestroyWindow(window);
