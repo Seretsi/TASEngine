@@ -708,6 +708,7 @@ private:
 		createImageViews();
 		createRenderPass();
 		createGraphicsPipeline();
+		createDepthResource();
 		createFramebuffers();
 		createUniformBuffers();
 		createDescriptorPool();
@@ -1683,6 +1684,10 @@ private:
 	}
 
 	void cleanupSwapChain() {
+		vkDestroyImageView(device, depthImageView, nullptr);
+		vkDestroyImage(device, depthImage, nullptr);
+		vkFreeMemory(device, depthImageMemory, nullptr);
+
 		vkDestroyBuffer(device, vertexBuffer, nullptr);
 
 		for (auto framebuffer : swapChainFramebuffers) {
