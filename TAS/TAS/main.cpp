@@ -27,6 +27,9 @@ const int WIDTH = 800;
 const int HEIGHT = 600;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
+const std::string MODEL_PATH = "models/viking_room.obj";
+const std::string TEXTURE_PATH = "textures/viking_room.png";
+
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
 };
@@ -410,7 +413,7 @@ private:
 
 	void createTextureImage() {
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		const int bytesPerPixel = 4;
 		VkDeviceSize imageSize = texWidth * texHeight * bytesPerPixel;
 
