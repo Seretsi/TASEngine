@@ -1036,9 +1036,9 @@ private:
 
 		for (size_t i = 0; i < swapChainImageViews.size(); i++) {
 			std::array<VkImageView, 3> attachments = {
-				swapChainImageViews[i],
+				colorImageView,
 				depthImageView,
-				colorImageView
+				swapChainImageViews[i]
 			};
 
 			VkFramebufferCreateInfo framebufferInfo = {};
