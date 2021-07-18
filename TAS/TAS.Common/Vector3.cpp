@@ -2,6 +2,30 @@
 
 extern const Vector3 kZeroVector;
 
+inline float dot(const Vector3& a, const Vector3& b)
+{
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline Vector3 cross(const Vector3& a, const Vector3& b)
+{
+	Vector3 ret = {
+		(a.y * b.z - a.z * b.y),
+		-(a.x * b.z - a.z * b.x),
+		(a.x * b.y - a.y * b.x)
+	};
+	return ret;
+}
+
+inline float distance(const Vector3& a, const Vector3& b)
+{
+	float na = a.x - b.x;
+	float nb = a.x - b.x;
+	float nc = a.x - b.x;
+	float ret = sqrtf(na * na + nb * nb + nc * nc);
+	return ret;
+}
+
 Vector3& Vector3::operator=(Vector3& other)
 {
 	if (*this == other)
@@ -9,62 +33,53 @@ Vector3& Vector3::operator=(Vector3& other)
 		return *this;
 	}
 
-	data = other.data;
+	x = other.x;
+	y = other.y;
+	z = other.z;
 	return *this;
 }
 
-float Vector3::x() const { return data[0]; }
-float Vector3::y() const { return data[1]; }
-float Vector3::z() const { return data[2]; }
-// define different ordering for swizzling.
-// float xxy() { std::array<float, 3> ret = { data[0], data[0], data[1] }; return ret; }
+// define swizzling.
 
 void Vector3::setToNormalized()
 {
 	float len = length();
-	data[0] /= len;
-	data[1] /= len;
-	data[2] /= len;
+	x /= len;
+	y /= len;
+	z /= len;
 }
 
 Vector3 Vector3::normalize() const
 {
 	float oneOverLen = 1.0f / length();
 	Vector3 ret(
-		data[0] * oneOverLen,
-		data[1] * oneOverLen,
-		data[2] * oneOverLen
+		x * oneOverLen,
+		y * oneOverLen,
+		z * oneOverLen
 	);
 	return ret;
 }
 
 float Vector3::length() const {
-	return sqrtf(powf(data[0], 2) + powf(data[1], 2) + powf(data[2], 2));
+	return sqrtf(x*x + y*y + z*z);
 }
 
 bool Vector3::operator==(const Vector3& other) const
 {
-	return data == other.data;
+	return x == other.x && y == other.y && z == other.z;
 }
 
 bool Vector3::operator!=(const Vector3& other) const
 {
-	return data != other.data;
-}
-
-int Vector3::operator<=>(const Vector3& other) const
-{
-	if (data > other.data) return 1;
-	else if (data == other.data) return 0;
-	else return -1;
+	return x != other.x && y != other.y && z != other.z;
 }
 
 Vector3 Vector3::operator*(const float scaler) const
 {
 	Vector3 ret = {
-		data[0] * scaler,
-		data[1] * scaler,
-		data[2] * scaler
+		x * scaler,
+		y * scaler,
+		x * scaler
 	};
 	return ret;
 }
@@ -73,9 +88,9 @@ Vector3 Vector3::operator/(const float scaler) const
 {
 	float oneOverScaler = 1.0f / scaler;
 	Vector3 ret = {
-		data[0] * oneOverScaler,
-		data[1] * oneOverScaler,
-		data[2] * oneOverScaler
+		x * oneOverScaler,
+		y * oneOverScaler,
+		z * oneOverScaler
 	};
 	return ret;
 }
@@ -83,9 +98,9 @@ Vector3 Vector3::operator/(const float scaler) const
 Vector3 Vector3::operator+(const Vector3 & other)
 {
 	Vector3 ret = {
-		data[0] + other.data[0],
-		data[1] + other.data[1],
-		data[2] + other.data[2]
+		x + other.x,
+		y + other.y,
+		z + other.z
 	};
 	return ret;
 }
@@ -93,9 +108,9 @@ Vector3 Vector3::operator+(const Vector3 & other)
 Vector3 Vector3::operator-(const Vector3 & other)
 {
 	Vector3 ret = {
-		data[0] - other.data[0],
-		data[1] - other.data[1],
-		data[2] - other.data[2]
+		x - other.x,
+		y - other.y,
+		z - other.z
 	};
 	return ret;
 }
@@ -103,48 +118,48 @@ Vector3 Vector3::operator-(const Vector3 & other)
 Vector3 Vector3::operator-()
 {
 	Vector3 ret = {
-		-data[0],
-		-data[1],
-		-data[2]
+		-x,
+		-y,
+		-z
 	};
 	return ret;
 }
 
 Vector3& Vector3::operator+=(const Vector3& other)
 {
-	data[0] += other.data[0];
-	data[1] += other.data[1];
-	data[2] += other.data[2];
+	x += other.x;
+	y += other.y;
+	z += other.z;
 	return *this;
 }
 
 Vector3& Vector3::operator-=(const Vector3& other)
 {
-	data[0] -= other.data[0];
-	data[1] -= other.data[1];
-	data[2] -= other.data[2];
+	x -= other.x;
+	y -= other.y;
+	z -= other.z;
 	return *this;
 }
 
 Vector3& Vector3::operator*=(const Vector3& other)
 {
-	data[0] *= other.data[0];
-	data[1] *= other.data[1];
-	data[2] *= other.data[2];
+	x *= other.x;
+	y *= other.y;
+	z *= other.z;
 	return *this;
 }
 
 Vector3& Vector3::operator/=(const Vector3& other)
 {
-	data[0] /= other.data[0];
-	data[1] /= other.data[1];
-	data[2] /= other.data[2];
+	x /= other.x;
+	y /= other.y;
+	z /= other.z;
 	return *this;
 }
 
 void Vector3::clear()
 {
-	data[0] = data[1] = data[2] = 0.0f;
+	x = y = z = 0.0f;
 }
 
 Vector3 Vector3::projectOnto(Vector3 other) const
@@ -153,34 +168,9 @@ Vector3 Vector3::projectOnto(Vector3 other) const
 	float vdotn = dot(*this, other);
 	float product = vdotn / n;
 	Vector3 ret = {
-		product * data[0],
-		product * data[1],
-		product * data[2]
+		product * x,
+		product * y,
+		product * z
 	};
-	return ret;
-}
-
-
-inline float dot(const Vector3& a, const Vector3& b)
-{
-	return a.data[0] * b.data[0] + a.data[1] * b.data[1] + a.data[2] * b.data[2];
-}
-
-inline Vector3 cross(const Vector3& a, const Vector3& b)
-{
-	Vector3 ret = {
-		(a.data[1] * b.data[2] - a.data[2] * b.data[1]),
-		-(a.data[0] * b.data[2] - a.data[2] * b.data[0]),
-		(a.data[0] * b.data[1] - a.data[1] * b.data[0])
-	};
-	return ret;
-}
-
-inline float distance(const Vector3& a, const Vector3& b)
-{
-	float na = a.data[0] - b.data[0];
-	float nb = a.data[0] - b.data[0];
-	float nc = a.data[0] - b.data[0];
-	float ret = sqrtf(na*na + nb*nb + nc*nc);
 	return ret;
 }
