@@ -15,18 +15,18 @@
 #include <tiny_obj_loader.h>
 #include <unordered_map>
 
-#include <chrono>
-#include <iostream>
-#include <stdexcept>
-#include <functional>
-#include <cstdlib>
-#include <vector>
-#include <map>
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <map>
 #include <optional>
 #include <set>
-#include <algorithm>
-#include <fstream>
+#include <stdexcept>
+#include <vector>
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
