@@ -15,18 +15,18 @@
 #include <tiny_obj_loader.h>
 #include <unordered_map>
 
-#include <chrono>
-#include <iostream>
-#include <stdexcept>
-#include <functional>
-#include <cstdlib>
-#include <vector>
-#include <map>
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <map>
 #include <optional>
 #include <set>
-#include <algorithm>
-#include <fstream>
+#include <stdexcept>
+#include <vector>
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -117,7 +117,7 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
 	}
 }
 
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
+static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
 	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
 	if (func != nullptr) {
 		func(instance, debugMessenger, pAllocator);
@@ -1156,8 +1156,8 @@ private:
 	}
 
 	void createGraphicsPipeline() {
-		auto vertShaderCode = readFile("shaders_compiled/vert.spv");
-		auto fragShaderCode = readFile("shaders_compiled/frag.spv");
+		auto vertShaderCode = readFile("C:/Users/khaba/source/repos/TASEngine/TAS/shaders_compiled/vert.spv");
+		auto fragShaderCode = readFile("C:/Users/khaba/source/repos/TASEngine/TAS/shaders_compiled/frag.spv");
 
 		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
 		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1339,7 +1339,7 @@ private:
 		std::ifstream file(filename, std::ios::ate | std::ios::binary); // ate: open At The End of the file in binary format
 
 		if (!file.is_open()) {
-			throw std::runtime_error("failed to open file!");
+			throw std::runtime_error("failed to open file: " + filename + "!");
 		}
 
 		size_t fileSize = (size_t)file.tellg();
@@ -1711,28 +1711,38 @@ private:
 		}
 	}
 
-	void verifyExtensionFullCapabilitiesReached(const char** retrievedExtensions, uint32_t* retrievedCount, std::vector<VkExtensionProperties>* availableExtensions) {
+	void verifyExtensionFullCapabilitiesReached(const char** requiredExtensions, uint32_t* retrievedCount, std::vector<VkExtensionProperties>* availableExtensions) {
 		std::vector<const char*> missingExtensions;
-		for (const auto& avail : *availableExtensions) {
+		
+		std::cout << "Needed Extensions:" << std::endl;
+		for (uint32_t num = 0; num < *retrievedCount; num++) {
+			std::cout << "\t" << requiredExtensions[num] << std::endl;
+		}
+		std::cout << std::endl;
+
+		for (uint32_t num = 0; num < *retrievedCount; num++) {
 			bool found = false;
-			for (uint32_t num = 0; num < *retrievedCount; num++) {
-				found = strcmp(retrievedExtensions[num], avail.extensionName);
+			for (const auto& avail : *availableExtensions) {
+				found = strcmp(requiredExtensions[num], avail.extensionName) == 0;
+				if (found) break;
 			}
 			if (!found) {
-				const char* missing = avail.extensionName;
+				auto missing = requiredExtensions[num];
 				missingExtensions.push_back(missing);
 			}
 		}
-
-		std::cout << "\n___________WARNING_________" << std::endl;
-		std::cout << "Following extensions are unsupported by this machine" << std::endl;
-		for (auto & ext : missingExtensions) {
-			std::cout << "\t" << ext << std::endl;
+		
+		if (!missingExtensions.empty()) {
+			std::cout << "\n___________WARNING_________" << std::endl;
+			std::cout << "Following extensions are unsupported by this machine" << std::endl;
+			for (auto & ext : missingExtensions) {
+				std::cout << "\t" << ext << std::endl;
+			}
 		}
 	}
 
 	bool checkValidationLayerSupport() {
-		// get a acount of how many layers there are to help define a vector array
+		// get a count of how many layers there are to help define a vector array
 		uint32_t layerCount;
 		vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
@@ -1775,6 +1785,7 @@ private:
 		for (const auto& extension : extensions) {
 			std::cout << "\t" << extension.extensionName << std::endl;
 		}
+		std::cout << std::endl;
 
 		uint32_t glfwExtensionCount = 0;
 		const char** glfwExtensions;
