@@ -6,6 +6,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
+#define LIBGLTF_IMPLEMENTATION
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -14,6 +15,7 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <unordered_map>
+#include <libgltf.h>
 
 #include <algorithm>
 #include <array>
@@ -279,6 +281,14 @@ private:
 
 	void loadModel()
 	{
+		// make this work
+		//std::shared_ptr<libgltf::IglTFLoader> gltf_loader = libgltf::IglTFLoader::Create(/*a function to load the file by std::istream*/);
+		//std::shared_ptr<libgltf::SGlTF> loaded_gltf = gltf_loader->glTF();// .lock();
+		//if (!loaded_gltf)
+		//{
+		//	printf("failed to load your gltf file");
+		//}
+
 		tinyobj::attrib_t attrib;
 		std::vector<tinyobj::shape_t> shapes;
 		std::vector<tinyobj::material_t> materials;
