@@ -12,15 +12,15 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
+#include <libgltf.h>
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
-#include <unordered_map>
-#include <libgltf.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -28,7 +28,10 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
+
+namespace fs = std::filesystem;
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -36,6 +39,8 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
+
+const std::string GLTF_MODEL_PATH = "models/Monster/glTF/Monster.gltf";
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -239,7 +244,8 @@ private:
 		createTextureImage();
 		createTextureImageView();
 		createTextureSampler();
-		loadModel();
+		loadObjModel();
+		loadglTFModel();
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffers();
@@ -279,16 +285,100 @@ private:
 		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
-	void loadModel()
+	void loadglTFModel()
 	{
-		// make this work
-		//std::shared_ptr<libgltf::IglTFLoader> gltf_loader = libgltf::IglTFLoader::Create(/*a function to load the file by std::istream*/);
-		//std::shared_ptr<libgltf::SGlTF> loaded_gltf = gltf_loader->glTF();// .lock();
-		//if (!loaded_gltf)
-		//{
-		//	printf("failed to load your gltf file");
-		//}
+		std::shared_ptr<libgltf::IglTFLoader> gltf_loader = libgltf::IglTFLoader::Create([](const std::string& _path)
+			{
+				fs::path file_path;
+				if (_path.empty())
+				{
+					file_path = fs::path(GLTF_MODEL_PATH);
+				}
+				else
+				{
+					file_path = fs::path(GLTF_MODEL_PATH).parent_path().append(_path);
+				}
 
+				std::shared_ptr<std::istream> stream_path = nullptr;
+				if (!fs::exists(file_path))
+				{
+					return stream_path;
+				}
+
+				stream_path = std::make_shared<std::ifstream>(file_path.string(), std::ios::in | std::ios::binary);
+				return stream_path;
+			});
+		const auto& loaded_gltf = gltf_loader->glTF();
+		if (!loaded_gltf)
+		{
+			printf("failed to load your gltf file");
+		}
+		else
+		{
+			printf("loaded gltf successfully");
+		}
+
+		// load indicies
+		libgltf::TVertexList<1, size_t> triangle_data;
+		auto triangle_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(triangle_data);
+		gltf_loader->LoadMeshPrimitiveIndicesData(0, 0, triangle_stream);
+
+		// load point data
+		libgltf::TVertexList<1, size_t> position_data;
+		auto position_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(position_data);
+		gltf_loader->LoadMeshPrimitiveAttributeData(0, 0, "position", position_stream);
+
+		if (triangle_stream->m_Vector.empty())
+		{
+			printf("no indicies found");
+		}
+		if (!position_stream)
+		{
+			printf("no position data found");
+		}
+
+//		tinyobj::attrib_t attrib;
+//		std::vector<tinyobj::shape_t> shapes;
+//		std::vector<tinyobj::material_t> materials;
+//		std::string warn, err;
+//		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str()))
+//		{
+//			throw std::runtime_error(warn + err);
+//		}
+//
+//		std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+//		for (const auto& shape : shapes)
+//		{
+//			for (const auto& index : shape.mesh.indices)
+//			{
+//				Vertex vertex{};
+//
+//				int vertexStride = 3;
+//				vertex.pos = {
+//					attrib.vertices[vertexStride * index.vertex_index + 0],
+//					attrib.vertices[vertexStride * index.vertex_index + 1],
+//					attrib.vertices[vertexStride * index.vertex_index + 2],
+//				};
+//
+//				long int texCoordStride = 2;
+//				vertex.texCoord = {
+//					attrib.texcoords[texCoordStride * index.texcoord_index + 0],
+//					1.0f - attrib.texcoords[texCoordStride * index.texcoord_index + 1]
+//				};
+//
+//				vertex.color = { 1.0f, 1.0f, 1.0f };
+//
+//				if (uniqueVertices.count(vertex) == 0) {
+//					uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+//					vertices.push_back(vertex);
+//				}
+//				indices.push_back(uniqueVertices[vertex]);
+//			}
+//		}
+	}
+
+	void loadObjModel()
+	{
 		tinyobj::attrib_t attrib;
 		std::vector<tinyobj::shape_t> shapes;
 		std::vector<tinyobj::material_t> materials;
