@@ -15,6 +15,7 @@
 #include <libgltf.h>
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
+#include <Volk/volk.h>
 
 #include <algorithm>
 #include <array>
@@ -285,6 +286,7 @@ private:
 		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
+	// todo: load gltf models
 	void loadglTFModel()
 	{
 		std::shared_ptr<libgltf::IglTFLoader> gltf_loader = libgltf::IglTFLoader::Create([](const std::string& _path)
@@ -321,60 +323,18 @@ private:
 		// load indicies
 		libgltf::TVertexList<1, size_t> triangle_data;
 		auto triangle_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(triangle_data);
-		gltf_loader->LoadMeshPrimitiveIndicesData(0, 0, triangle_stream);
+		if (gltf_loader->LoadMeshPrimitiveIndicesData(0, 0, triangle_stream))
+		{
+			printf("no indicies found");
+		}
 
 		// load point data
 		libgltf::TVertexList<1, size_t> position_data;
 		auto position_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(position_data);
-		gltf_loader->LoadMeshPrimitiveAttributeData(0, 0, "position", position_stream);
-
-		if (triangle_stream->m_Vector.empty())
-		{
-			printf("no indicies found");
-		}
-		if (!position_stream)
+		if (!gltf_loader->LoadMeshPrimitiveAttributeData(0, 0, "position", position_stream))
 		{
 			printf("no position data found");
 		}
-
-//		tinyobj::attrib_t attrib;
-//		std::vector<tinyobj::shape_t> shapes;
-//		std::vector<tinyobj::material_t> materials;
-//		std::string warn, err;
-//		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str()))
-//		{
-//			throw std::runtime_error(warn + err);
-//		}
-//
-//		std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-//		for (const auto& shape : shapes)
-//		{
-//			for (const auto& index : shape.mesh.indices)
-//			{
-//				Vertex vertex{};
-//
-//				int vertexStride = 3;
-//				vertex.pos = {
-//					attrib.vertices[vertexStride * index.vertex_index + 0],
-//					attrib.vertices[vertexStride * index.vertex_index + 1],
-//					attrib.vertices[vertexStride * index.vertex_index + 2],
-//				};
-//
-//				long int texCoordStride = 2;
-//				vertex.texCoord = {
-//					attrib.texcoords[texCoordStride * index.texcoord_index + 0],
-//					1.0f - attrib.texcoords[texCoordStride * index.texcoord_index + 1]
-//				};
-//
-//				vertex.color = { 1.0f, 1.0f, 1.0f };
-//
-//				if (uniqueVertices.count(vertex) == 0) {
-//					uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-//					vertices.push_back(vertex);
-//				}
-//				indices.push_back(uniqueVertices[vertex]);
-//			}
-//		}
 	}
 
 	void loadObjModel()
