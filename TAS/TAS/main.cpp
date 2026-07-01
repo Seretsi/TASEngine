@@ -16,6 +16,8 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <Volk/volk.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include <algorithm>
 #include <array>
@@ -177,7 +179,7 @@ private:
 	VkImage colorImage;
 	VkDeviceMemory colorImageMemory;
 	VkImageView colorImageView;
-
+	bool updateSwapchain{ false };
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 
@@ -204,12 +206,37 @@ private:
 public:
 	void run() {
 		initWindow();
+		initSDLContext();
 		initVulkan();
 		mainLoop();
 		cleanup();
 	}
 
 private:
+
+	inline void chk(VkResult result) {
+		if (result != VK_SUCCESS) {
+			std::cerr << "programmed failed a vulkan step with message: \"" + result << "\".";
+		}
+	}
+
+	inline void chk(bool result) {
+		if (!result) {
+			std::cerr << "programmed failed a SDL step with message: \"" + result << "\".";
+		}
+	}
+
+	inline void chkSwapchain(VkResult result) {
+		if (result < VK_SUCCESS) {
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+				updateSwapchain = true;
+				return;
+			}
+			std::cerr << "Vulkan call returned an error (" << result << ")\n";
+			exit(result);
+		}
+	}
+
 	void initWindow() {
 		glfwInit();
 
@@ -219,6 +246,14 @@ private:
 		window = glfwCreateWindow(WIDTH, HEIGHT, "TAS Engine - Vulkan dev", nullptr, nullptr);
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
+	}
+
+	int initSDLContext() {
+		if (!SDL_Init(SDL_INIT_VIDEO)) {
+			SDL_Log("SDL_Init failed: %s", SDL_GetError());
+			return 1;
+		}
 	}
 
 	static void framebufferResizeCallback(GLFWwindow * window, int width, int height) {
@@ -228,7 +263,9 @@ private:
 
 	void initVulkan() {
 		// order matters here
-		createInstance();
+		initVulkanVolkContext();
+		//createInstance();
+		createVkInstanceVolk();
 		setupDebugMessenger();
 		createSurface();
 		pickPhysicalDevice();
@@ -254,6 +291,100 @@ private:
 		createDescriptorSets();
 		createCommandBuffers();
 		createSyncObjects();
+	}
+
+	int initVulkanVolkContext() {
+		// Force SDL to load the Vulkan library before querying extensions
+		if (!SDL_Vulkan_LoadLibrary(nullptr)) {
+			SDL_Log("SDL_Vulkan_LoadLibrary failed: %s", SDL_GetError());
+			SDL_Log("Video driver: %s", SDL_GetCurrentVideoDriver());
+			return 1;
+		}
+
+		// ========== Volk init ===================
+		if (volkInitialize() != VK_SUCCESS) {
+			SDL_Log("Failed to init Volk");
+			return 1;
+		}
+		return 0;
+	}
+
+	void createInstance() {
+
+		VkApplicationInfo appInfo = {};
+		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+		appInfo.pApplicationName = "Hello Triangle";
+		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+		appInfo.pEngineName = "No Engine";
+		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+		appInfo.apiVersion = VK_API_VERSION_1_0;
+
+		VkInstanceCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+		createInfo.pApplicationInfo = &appInfo;
+
+		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
+		if (enableValidationLayers) {
+			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			createInfo.ppEnabledLayerNames = validationLayers.data();
+
+			populateDebugMessengerCreateInfo(debugCreateInfo);
+			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+		}
+		else {
+			createInfo.enabledLayerCount = 0;
+
+			createInfo.pNext = nullptr;
+		}
+
+		auto requiredExtensions = getRequiredExtensions();
+		createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
+		createInfo.ppEnabledExtensionNames = requiredExtensions.data();
+
+		createInfo.enabledLayerCount = 0;
+
+		if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create instance!");
+		}
+	}
+
+	void createVkInstanceVolk() {
+		VkApplicationInfo appInfo = {
+			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+			.pApplicationName = "That Added Something",
+			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+			.pEngineName = "No Engine",
+			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
+			.apiVersion = VK_API_VERSION_1_4
+		};
+
+		uint32_t instanceExtensionsCount{ 0 };
+		char const* const* instanceExtensions{ SDL_Vulkan_GetInstanceExtensions(&instanceExtensionsCount) };
+
+		VkInstanceCreateInfo instanceCI{
+			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+			.pApplicationInfo = &appInfo,
+			.enabledExtensionCount = instanceExtensionsCount,
+			.ppEnabledExtensionNames = instanceExtensions,
+		};
+
+		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
+		if (enableValidationLayers) {
+			instanceCI.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			instanceCI.ppEnabledLayerNames = validationLayers.data();
+
+			populateDebugMessengerCreateInfo(debugCreateInfo);
+			instanceCI.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+		}
+		else {
+			instanceCI.enabledLayerCount = 0;
+
+			instanceCI.pNext = nullptr;
+		}
+
+		chk(vkCreateInstance(&instanceCI, nullptr, &instance));
+
+		volkLoadInstance(instance);
 	}
 
 	void createColorResources() {
@@ -286,7 +417,9 @@ private:
 		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
-	// todo: load gltf models
+	// Loads a glTF model into the shared `vertices` / `indices` buffers, mirroring
+	// the contract of loadObjModel(): for every drawn vertex an entry exists in
+	// `vertices` (pos / color / texCoord) and `indices` references it.
 	void loadglTFModel()
 	{
 		std::shared_ptr<libgltf::IglTFLoader> gltf_loader = libgltf::IglTFLoader::Create([](const std::string& _path)
@@ -310,30 +443,84 @@ private:
 				stream_path = std::make_shared<std::ifstream>(file_path.string(), std::ios::in | std::ios::binary);
 				return stream_path;
 			});
+
 		const auto& loaded_gltf = gltf_loader->glTF();
 		if (!loaded_gltf)
 		{
-			printf("failed to load your gltf file");
+			throw std::runtime_error("failed to load glTF file: " + GLTF_MODEL_PATH);
+		}
+
+		const std::size_t meshIndex = 0;
+		const std::size_t primitiveIndex = 0;
+
+		// Positions: a glTF POSITION accessor is VEC3 of floats.
+		libgltf::TVertexList<3, float> position_data;
+		auto position_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<3, float>>>(position_data);
+		if (!gltf_loader->LoadMeshPrimitiveAttributeData(meshIndex, primitiveIndex, "POSITION", position_stream))
+		{
+			throw std::runtime_error("failed to load glTF POSITION attribute");
+		}
+
+		// Texture coordinates: TEXCOORD_0 is VEC2 of floats. Optional - a primitive
+		// may not have any, in which case we fall back to (0, 0).
+		libgltf::TVertexList<2, float> texcoord_data;
+		auto texcoord_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<2, float>>>(texcoord_data);
+		const bool hasTexCoords = gltf_loader->LoadMeshPrimitiveAttributeData(meshIndex, primitiveIndex, "TEXCOORD_0", texcoord_stream);
+
+		// Indices: SCALAR accessor. The source may be UNSIGNED_SHORT or UNSIGNED_INT;
+		// TAccessorStream converts each element into our uint32_t list automatically.
+		libgltf::TVertexList<1, uint32_t> index_data;
+		auto index_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, uint32_t>>>(index_data);
+		const bool hasIndices = gltf_loader->LoadMeshPrimitiveIndicesData(meshIndex, primitiveIndex, index_stream);
+
+		// glTF already stores unique vertices in parallel attribute arrays, so no
+		// de-duplication is needed. Offset our indices by any vertices already loaded
+		// (e.g. the .obj model) so both can share the same buffers.
+		const uint32_t baseVertex = static_cast<uint32_t>(vertices.size());
+
+		for (size_t i = 0; i < position_data.size(); ++i)
+		{
+			Vertex vertex{};
+
+			vertex.pos = {
+				position_data[i][0],
+				position_data[i][1],
+				position_data[i][2]
+			};
+
+			// glTF UV origin is top-left, matching Vulkan, so (unlike the .obj path)
+			// the V coordinate is not flipped.
+			if (hasTexCoords && i < texcoord_data.size())
+			{
+				vertex.texCoord = {
+					texcoord_data[i][0],
+					texcoord_data[i][1]
+				};
+			}
+			else
+			{
+				vertex.texCoord = { 0.0f, 0.0f };
+			}
+
+			vertex.color = { 1.0f, 1.0f, 1.0f };
+
+			vertices.push_back(vertex);
+		}
+
+		if (hasIndices)
+		{
+			for (size_t i = 0; i < index_data.size(); i++)
+			{
+				indices.push_back(baseVertex + index_data[i][0]);
+			}
 		}
 		else
 		{
-			printf("loaded gltf successfully");
-		}
-
-		// load indicies
-		libgltf::TVertexList<1, size_t> triangle_data;
-		auto triangle_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(triangle_data);
-		if (gltf_loader->LoadMeshPrimitiveIndicesData(0, 0, triangle_stream))
-		{
-			printf("no indicies found");
-		}
-
-		// load point data
-		libgltf::TVertexList<1, size_t> position_data;
-		auto position_stream = std::make_shared<libgltf::TAccessorStream<libgltf::TVertexList<1, size_t>>>(position_data);
-		if (!gltf_loader->LoadMeshPrimitiveAttributeData(0, 0, "position", position_stream))
-		{
-			printf("no position data found");
+			// Non-indexed primitive: emit sequential indices over the vertices.
+			for (size_t i = 0; i < position_data.size(); i++)
+			{
+				indices.push_back(baseVertex + static_cast<uint32_t>(i));
+			}
 		}
 	}
 
@@ -1729,46 +1916,6 @@ private:
 			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
 			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 		createInfo.pfnUserCallback = debugCallback;
-	}
-
-	void createInstance() {
-		
-		VkApplicationInfo appInfo = {};
-		appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-		appInfo.pApplicationName = "Hello Triangle";
-		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.pEngineName = "No Engine";
-		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.apiVersion = VK_API_VERSION_1_0;
-
-		VkInstanceCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-		createInfo.pApplicationInfo = &appInfo;
-
-		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-		if (enableValidationLayers) {
-			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-			createInfo.ppEnabledLayerNames = validationLayers.data();
-
-			populateDebugMessengerCreateInfo(debugCreateInfo);
-			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
-		}
-		else {
-			createInfo.enabledLayerCount = 0;
-
-			createInfo.pNext = nullptr;
-		}
-
-		auto requiredExtensions = getRequiredExtensions();
-		createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
-		createInfo.ppEnabledExtensionNames = requiredExtensions.data();
-
-
-		createInfo.enabledLayerCount = 0;
-
-		if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create instance!");
-		}
 	}
 
 	void verifyExtensionFullCapabilitiesReached(const char** requiredExtensions, uint32_t* retrievedCount, std::vector<VkExtensionProperties>* availableExtensions) {

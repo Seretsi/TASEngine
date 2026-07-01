@@ -106,14 +106,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);VK_NO_PROTOTYPES;VK_NO_PROTOTYPES</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\khaba\source\repos\libgltf\include\libgltf;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\tinyobjloader;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\stb;$(VULKAN_SDK)\Include;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glm;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\include;C:\Users\khaba\source\repos\tinyobjloader;C:\Users\khaba\source\repos\stb;C:\SDL3\SDL3-3.4.8\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\khaba\source\repos\libgltf\include\libgltf;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\tinyobjloader;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\stb;$(VULKAN_SDK)\Include;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glm;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\include;C:\Users\khaba\source\repos\tinyobjloader;C:\Users\khaba\source\repos\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;SDL3.lib;libgltfd.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\SDL3\SDL3-3.4.8\lib\x64;C:\VulkanSDK\1.4.350.0\Lib;C:\Users\khaba\source\repos\libgltf\source\libgltf\Debug;$(VULKAN_SDK)\Lib;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\lib-vc2022;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\VulkanSDK\1.4.350.0\Lib;C:\Users\khaba\source\repos\libgltf\source\libgltf\Debug;$(VULKAN_SDK)\Lib;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\lib-vc2022;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -146,7 +146,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);VK_NO_PROTOTYPES;VK_NO_PROTOTYPES</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\khaba\source\repos\libgltf\include\libgltf;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\tinyobjloader;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\stb;$(VULKAN_SDK)\Include;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glm;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\include;C:\Users\khaba\source\repos\tinyobjloader;C:\Users\khaba\source\repos\stb;C:\SDL3\SDL3-3.4.8\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\khaba\source\repos\libgltf\include\libgltf;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\tinyobjloader;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\stb;$(VULKAN_SDK)\Include;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glm;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\include;C:\Users\khaba\source\repos\tinyobjloader;C:\Users\khaba\source\repos\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -155,7 +155,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glfw3.lib;SDL3.lib;libgltfd.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\SDL3\SDL3-3.4.8\lib\x64;C:\VulkanSDK\1.4.350.0\Lib;C:\Users\khaba\source\repos\libgltf\source\libgltf\Release;$(VULKAN_SDK)\Lib;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\lib-vc2022;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>C:\VulkanSDK\1.4.350.0\Lib;C:\Users\khaba\source\repos\libgltf\source\libgltf\Release;$(VULKAN_SDK)\Lib;C:\Users\khaba\Documents\Visual Studio 2022\Libraries\glfw-3.4.bin.WIN64\lib-vc2022;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
