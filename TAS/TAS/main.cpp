@@ -205,7 +205,7 @@ private:
 
 public:
 	void run() {
-		initWindow();
+		//initWindow();
 		initSDLContext();
 		initVulkan();
 		mainLoop();
@@ -267,9 +267,12 @@ private:
 		//createInstance();
 		createVkInstanceVolk();
 		setupDebugMessenger();
-		createSurface();
+		//createSurface();
+		createSDLSurface();
 		pickPhysicalDevice();
-		createLogicalDevice();
+		//createLogicalDevice();
+		sdlCreateLogicalDevice();
+
 		createSwapChain();
 		createImageViews();
 		createRenderPass();
@@ -283,7 +286,7 @@ private:
 		createTextureImageView();
 		createTextureSampler();
 		loadObjModel();
-		loadglTFModel();
+		//loadglTFModel();
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffers();
@@ -1744,6 +1747,11 @@ private:
 		}
 	}
 
+	void createSDLSurface() {
+		SDL_Window* window = SDL_CreateWindow("How to Vulkan (TAS rewrite)", 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+		chk(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface));
+	}
+
 	//configure logical device with graphics and presentation queue families
 	void createLogicalDevice() {
 
@@ -1754,7 +1762,6 @@ private:
 		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 		std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
-		// TODO: Handle if the indices are the same. We only need to pass unique indices 
 		float queuePriority = 1.0f;
 		for (uint32_t queueFamily : uniqueQueueFamilies) {
 			VkDeviceQueueCreateInfo queueCreateInfo = {};
@@ -1798,6 +1805,81 @@ private:
 		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 		std::cout << "logical device created" << std::endl;
 	}
+
+	void sdlCreateLogicalDevice() {
+
+		// Todo: Create separate data transfer queue
+		// https://vulkan-tutorial.com/Vertex_buffers/Staging_buffer Transfer Queue section
+		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+
+
+		const float queuePriority{ 1.0f };
+		for (uint32_t queueFamily : uniqueQueueFamilies) {
+			chk(SDL_Vulkan_GetPresentationSupport(instance, physicalDevice, queueFamily));
+
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			// define the priority for this queue, influencing scheduling
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+			queueCreateInfos.push_back(queueCreateInfo);
+		}
+
+		VkPhysicalDeviceVulkan12Features enabledVk12Features{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+		.descriptorIndexing = true,
+		.shaderSampledImageArrayNonUniformIndexing = true,
+		.descriptorBindingVariableDescriptorCount = true,
+		.runtimeDescriptorArray = true,
+		.bufferDeviceAddress = true
+		};
+		VkPhysicalDeviceVulkan13Features enableVk13Features{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+			.pNext = &enabledVk12Features,
+			.synchronization2 = true,
+			.dynamicRendering = true,
+		};
+		VkPhysicalDeviceFeatures deviceFeatures = {
+			.sampleRateShading = VK_TRUE,
+			.samplerAnisotropy = VK_TRUE
+		};
+
+		VkDeviceCreateInfo createInfo = {
+			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pNext = &enableVk13Features,
+			.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+			.pQueueCreateInfos = queueCreateInfos.data(),
+			.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+			.ppEnabledExtensionNames = deviceExtensions.data(),
+			.pEnabledFeatures = &deviceFeatures,
+		};
+
+		if constexpr (enableValidationLayers) {
+			//these fields are ignored in latest few versions of VK. This is for backCompat
+			createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			createInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		else {
+			createInfo.enabledLayerCount = static_cast<uint32_t>(deviceExtensions.size());
+			createInfo.ppEnabledLayerNames = deviceExtensions.data();
+		}
+		// end of backCompat
+
+		if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create logical device!");
+		}
+
+		vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+
+		volkLoadDevice(device);
+		std::cout << "logical device created" << std::endl;
+	}
+
 
 	void pickPhysicalDevice() {
 		uint32_t deviceCount = 0;
@@ -1877,8 +1959,8 @@ private:
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
 		QueueFamilyIndices indices;
 		uint32_t queueFamilyCount = 0;
+		
 		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
 		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
