@@ -360,16 +360,22 @@ private:
 
 		uint32_t instanceExtensionsCount{ 0 };
 		char const* const* instanceExtensions{ SDL_Vulkan_GetInstanceExtensions(&instanceExtensionsCount) };
+		std::vector<char const*> iExts(instanceExtensions, instanceExtensions + instanceExtensionsCount);
+
+		if constexpr (enableValidationLayers) {
+			iExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+			instanceExtensionsCount++;
+		}
 
 		VkInstanceCreateInfo instanceCI{
 			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 			.pApplicationInfo = &appInfo,
 			.enabledExtensionCount = instanceExtensionsCount,
-			.ppEnabledExtensionNames = instanceExtensions,
+			.ppEnabledExtensionNames = iExts.data(),
 		};
 
 		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
-		if (enableValidationLayers) {
+		if constexpr (enableValidationLayers) {
 			instanceCI.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 			instanceCI.ppEnabledLayerNames = validationLayers.data();
 
@@ -381,6 +387,7 @@ private:
 
 			instanceCI.pNext = nullptr;
 		}
+
 
 		chk(vkCreateInstance(&instanceCI, nullptr, &instance));
 
