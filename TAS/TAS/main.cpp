@@ -185,7 +185,8 @@ private:
 	bool updateSwapchain{ false };
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
-	VmaAllocator allocator;
+	VmaAllocator vmaAllocator;
+	VmaAllocation depthImageAllocation;
 
 	bool framebufferResized = false;
 
@@ -288,7 +289,10 @@ private:
 		createGraphicsPipeline();
 		createCommandPool();
 		createColorResources();
-		createDepthResources();
+		//createDepthResources();
+
+		sdlCreateDepthResources();
+
 		createFramebuffers();
 		createTextureImage();
 		createTextureImageView();
@@ -419,8 +423,7 @@ private:
 			.instance = instance
 		};
 
-		VmaAllocator allocator;
-		chk(vmaCreateAllocator(&allocatorCI, &allocator));
+		chk(vmaCreateAllocator(&allocatorCI, &vmaAllocator));
 	}
 
 
@@ -614,6 +617,22 @@ private:
 			VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			depthImage,
 			depthImageMemory);
+
+		depthImageView = createImageView(depthImage, 1, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+	}
+
+	void sdlCreateDepthResources() {
+		VkFormat depthFormat = findDepthFormat();
+
+		createImage2(
+			swapChainExtent.width,
+			swapChainExtent.height, 1,
+			msaaSamples,
+			depthFormat,
+			VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+			depthImage,
+			vmaAllocator,
+			depthImageAllocation);
 
 		depthImageView = createImageView(depthImage, 1, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
@@ -950,6 +969,34 @@ private:
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
 
+	void createImage2(uint32_t width, uint32_t height, uint32_t mipLevel, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImage& image, VmaAllocator& allocator, VmaAllocation& depthImageAllocation) {
+		VkImageCreateInfo imageInfo{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+			.flags = 0, // Optional
+			.imageType = VK_IMAGE_TYPE_2D,
+			.format = format,
+			.extent {
+				.width = static_cast<uint32_t>(width),
+				.height = static_cast<uint32_t>(height),
+				.depth = 1
+			},
+			.mipLevels = mipLevel,
+			.arrayLayers = 1,
+			.samples = numSamples,
+			.tiling = tiling,
+			.usage = usage,
+			.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		};
+
+		VmaAllocationCreateInfo allocCI{
+		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+		.usage = VMA_MEMORY_USAGE_AUTO
+		};
+
+		chk(vmaCreateImage(allocator, &imageInfo, &allocCI, &image, &depthImageAllocation, nullptr));
+	}
+
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -1172,7 +1219,10 @@ private:
 		createRenderPass();
 		createGraphicsPipeline();
 		createColorResources();
-		createDepthResources();
+		//createDepthResources();
+
+		sdlCreateDepthResources();
+
 		createFramebuffers();
 		createUniformBuffers();
 		createDescriptorPool();
