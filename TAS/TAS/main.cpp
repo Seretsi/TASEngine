@@ -7,17 +7,19 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
 #define LIBGLTF_IMPLEMENTATION
+#define VMA_IMPLEMENTATION
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 #include <libgltf.h>
-#include <stb_image.h>
-#include <tiny_obj_loader.h>
-#include <Volk/volk.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#include <stb_image.h>
+#include <tiny_obj_loader.h>
+#include <vma/vk_mem_alloc.h>
+#include <Volk/volk.h>
 
 #include <algorithm>
 #include <array>
@@ -137,6 +139,7 @@ static void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMesse
 class HelloTriangleApplication {
 private:
 	GLFWwindow* window;
+	SDL_Window* sdlWindow;
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	VkSurfaceKHR surface;
@@ -182,6 +185,7 @@ private:
 	bool updateSwapchain{ false };
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
+	VmaAllocator allocator;
 
 	bool framebufferResized = false;
 
@@ -261,6 +265,8 @@ private:
 		app->framebufferResized = true;
 	}
 
+	// todo: pass references into functions
+	// help us know the contracts (what is changing etc)
 	void initVulkan() {
 		// order matters here
 		initVulkanVolkContext();
@@ -272,9 +278,11 @@ private:
 		pickPhysicalDevice();
 		//createLogicalDevice();
 		sdlCreateLogicalDevice();
-
-		createSwapChain();
+		createVmaAllocator();
+		//createSwapChain();
+		sdlCreateSwapChain();
 		createImageViews();
+
 		createRenderPass();
 		createDescriptorSetLayout();
 		createGraphicsPipeline();
@@ -396,6 +404,25 @@ private:
 
 		volkLoadInstance(instance);
 	}
+
+	void createVmaAllocator() {
+		VmaVulkanFunctions vkFunctions{
+			.vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+			.vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+			.vkCreateImage = vkCreateImage
+		};
+		VmaAllocatorCreateInfo allocatorCI{
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+			.physicalDevice = physicalDevice,
+			.device = device,
+			.pVulkanFunctions = &vkFunctions,
+			.instance = instance
+		};
+
+		VmaAllocator allocator;
+		chk(vmaCreateAllocator(&allocatorCI, &allocator));
+	}
+
 
 	void createColorResources() {
 		VkFormat colorFormat = swapChainImageFormat;
@@ -1676,6 +1703,86 @@ private:
 		swapChainExtent = extent;
 	}
 
+	void sdlCreateSwapChain() {
+		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+
+		VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+		VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+		VkExtent2D extent = sdlChooseSwapExtent(swapChainSupport.capabilities, sdlWindow);
+
+		// avoiding hardware loading by setting count at least 1 bigger than min
+		uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+		if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+			imageCount = swapChainSupport.capabilities.maxImageCount;
+		}
+
+		VkSwapchainCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+		createInfo.surface = surface;
+		createInfo.minImageCount = imageCount;
+		createInfo.imageFormat = surfaceFormat.format;
+		createInfo.imageColorSpace = surfaceFormat.colorSpace;
+		createInfo.imageExtent = extent;
+		createInfo.imageArrayLayers = 1;
+		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+		uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+
+		if (indices.graphicsFamily != indices.presentFamily) {
+			createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+			createInfo.queueFamilyIndexCount = 2;
+			createInfo.pQueueFamilyIndices = queueFamilyIndices;
+		}
+		else {
+			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			createInfo.queueFamilyIndexCount = 0; //Optional
+			createInfo.pQueueFamilyIndices = nullptr; //Optional
+		}
+
+		createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+		createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		createInfo.presentMode = presentMode;
+		createInfo.clipped = VK_TRUE;
+
+		if (swapChain == VK_NULL_HANDLE) {
+			createInfo.oldSwapchain = VK_NULL_HANDLE;
+		}
+		else {
+			createInfo.oldSwapchain = swapChain;
+		}
+		
+		chk(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain));
+
+		vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+		swapChainImages.resize(imageCount);
+		vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+
+		swapChainImageFormat = surfaceFormat.format;
+		swapChainExtent = extent;
+	}
+
+	VkExtent2D sdlChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, SDL_Window* localWindow) {
+		if (capabilities.currentExtent.width != UINT32_MAX) {
+			return capabilities.currentExtent;
+		}
+		else {
+			int width, height;
+			chk(SDL_GetWindowSize(localWindow, &width, &height));
+
+			VkExtent2D actualExtent = {
+				static_cast<uint32_t>(width),
+				static_cast<uint32_t>(height)
+			};
+
+			// clamping
+			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+			return actualExtent;
+		}
+	}
+
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
 		if (capabilities.currentExtent.width != UINT32_MAX) {
 			return capabilities.currentExtent;
@@ -1748,8 +1855,8 @@ private:
 	}
 
 	void createSDLSurface() {
-		SDL_Window* window = SDL_CreateWindow("How to Vulkan (TAS rewrite)", 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-		chk(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface));
+		sdlWindow = SDL_CreateWindow("How to Vulkan (TAS rewrite)", 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+		chk(SDL_Vulkan_CreateSurface(sdlWindow, instance, nullptr, &surface));
 	}
 
 	//configure logical device with graphics and presentation queue families
@@ -1879,7 +1986,6 @@ private:
 		volkLoadDevice(device);
 		std::cout << "logical device created" << std::endl;
 	}
-
 
 	void pickPhysicalDevice() {
 		uint32_t deviceCount = 0;
