@@ -187,6 +187,7 @@ private:
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 	VmaAllocator vmaAllocator;
 	VmaAllocation depthImageAllocation;
+	VmaAllocation imageAllocation;
 
 	bool framebufferResized = false;
 
@@ -290,17 +291,18 @@ private:
 		createCommandPool();
 		createColorResources();
 		//createDepthResources();
-
 		sdlCreateDepthResources();
 
-		createFramebuffers();
+		//createFramebuffers();
 		createTextureImage();
 		createTextureImageView();
 		createTextureSampler();
 		loadObjModel();
 		//loadglTFModel();
-		createVertexBuffer();
-		createIndexBuffer();
+		//createVertexBuffer();
+		//createIndexBuffer();
+		createVertexIndexBuffers();
+
 		createUniformBuffers();
 		createDescriptorPool();
 		createDescriptorSets();
@@ -718,6 +720,105 @@ private:
 		textureImageView = createImageView(textureImage, mipLevels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
+	/**
+	Move image from CPU into the GPU using a single commandBuffer. This avoids sync bubbles
+	from the CPU waiting on multiple one use buffers to finish
+	*/
+	void transferImageToBuffer(VkBuffer& buffer, VkImage& image, uint32_t mipLevel, uint32_t width, uint32_t height, VkImageLayout  oldLayout, VkImageLayout newLayout) {
+		VkPipelineStageFlags sourceStage;
+		VkPipelineStageFlags destinationStage;
+
+		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+		VkImageMemoryBarrier2 barrierTexImage{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.oldLayout = oldLayout,
+			.newLayout = newLayout,
+			//.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			//.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = image,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = mipLevel,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			}
+		};
+		if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+			barrierTexImage.srcAccessMask = 0;
+			barrierTexImage.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		}
+		else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+			barrierTexImage.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrierTexImage.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+			sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else {
+			throw std::invalid_argument("unsupported layout transition");
+		}
+
+		VkDependencyInfo barrierTexInfo{
+			.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.imageMemoryBarrierCount = 1,
+			.pImageMemoryBarriers = &barrierTexImage,
+		};
+		vkCmdPipelineBarrier2(commandBuffer, &barrierTexInfo);
+
+		VkBufferImageCopy region{};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+
+		region.imageOffset = { 0, 0, 0 };
+		region.imageExtent = {
+			width,
+			height,
+			1
+		};
+
+		vkCmdCopyBufferToImage(
+			commandBuffer,
+			buffer,
+			image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1,
+			&region
+		);
+		VkImageMemoryBarrier2 barrierTexRead{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
+			.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+			.image = image,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = mipLevel,
+				.layerCount = 1
+			}
+		};
+		barrierTexInfo.pImageMemoryBarriers = &barrierTexRead;
+		vkCmdPipelineBarrier2(commandBuffer, &barrierTexInfo);
+		endSingleTimeCommands(commandBuffer);
+	}
+
 	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -846,6 +947,52 @@ private:
 		generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
 	}
 
+	void sdlCreateTextureImage() {
+		int texWidth, texHeight, texChannels;
+		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		const int bytesPerPixel = 4;
+		VkDeviceSize imageSize = texWidth * texHeight * bytesPerPixel;
+		mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
+		if (!pixels) {
+			throw std::runtime_error("failed to load texture image!");
+		}
+		createImage2(
+			texWidth,
+			texHeight,
+			mipLevels,
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			textureImage,
+			vmaAllocator,
+			imageAllocation);
+
+		VkBuffer imgSrcBuffer{};
+		VmaAllocation imgSrcAllocation{};
+		VkBufferCreateInfo imgSrcBufferCI{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = imageSize,
+			.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+		};
+		VmaAllocationCreateInfo imgSrcAllocCI{
+			.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			.usage = VMA_MEMORY_USAGE_AUTO
+		};
+		VmaAllocationInfo imgSrcAllocInfo;
+		chk(vmaCreateBuffer(vmaAllocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, &imgSrcAllocInfo));
+		// mapped allows memcpy to work
+		memcpy(imgSrcAllocInfo.pMappedData, pixels, imageSize);
+
+		stbi_image_free(pixels);
+
+		transferImageToBuffer(imgSrcBuffer, textureImage, mipLevels, texWidth, texHeight);
+
+		generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
+	}
+
+
 	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {
 		// check if iamge format supports blitting
 		VkFormatProperties formatProperties;
@@ -969,7 +1116,7 @@ private:
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
 
-	void createImage2(uint32_t width, uint32_t height, uint32_t mipLevel, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImage& image, VmaAllocator& allocator, VmaAllocation& depthImageAllocation) {
+	void createImage2(uint32_t width, uint32_t height, uint32_t mipLevel, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImage& image, VmaAllocator& allocator, VmaAllocation& imageAllocation) {
 		VkImageCreateInfo imageInfo{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.flags = 0, // Optional
@@ -994,7 +1141,7 @@ private:
 		.usage = VMA_MEMORY_USAGE_AUTO
 		};
 
-		chk(vmaCreateImage(allocator, &imageInfo, &allocCI, &image, &depthImageAllocation, nullptr));
+		chk(vmaCreateImage(allocator, &imageInfo, &allocCI, &image, &imageAllocation, nullptr));
 	}
 
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
@@ -1106,6 +1253,26 @@ private:
 
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
+	}
+
+	void createVertexIndexBuffers() {
+		VkDeviceSize vbufferSize = sizeof(vertices[0]) * vertices.size();
+		VkDeviceSize ibufferSize = sizeof(indices[0]) * indices.size();
+		VkBufferCreateInfo bufferCI{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = vbufferSize + ibufferSize,
+			.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+		};
+		VmaAllocationCreateInfo vBufferAllocCI{
+			.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			.usage = VMA_MEMORY_USAGE_AUTO,
+		};
+
+		VmaAllocationInfo vBufferAllocInfo{};
+		VmaAllocation vBufferAllocation;
+		chk(vmaCreateBuffer(vmaAllocator, &bufferCI, &vBufferAllocCI, &vertexBuffer, &vBufferAllocation, &vBufferAllocInfo));
+		memcpy(vBufferAllocInfo.pMappedData, vertices.data(), vbufferSize);
+		memcpy(((char*)vBufferAllocInfo.pMappedData) + vbufferSize, indices.data(), ibufferSize);
 	}
 
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
@@ -1281,6 +1448,8 @@ private:
 		submitInfo.pCommandBuffers = &commandBuffer;
 
 		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		// use a waitIdle because this must wait for all other operations to run
+		// and we do not need the GPU for anything else till its done.
 		vkQueueWaitIdle(graphicsQueue);
 
 		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
