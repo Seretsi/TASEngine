@@ -186,6 +186,7 @@ private:
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 	VmaAllocator vmaAllocator;
+	VmaAllocation vBufferAllocation;
 	VmaAllocation depthImageAllocation;
 	VmaAllocation imageAllocation;
 
@@ -214,8 +215,10 @@ public:
 		//initWindow();
 		initSDLContext();
 		initVulkan();
-		mainLoop();
-		cleanup();
+		sdlMainLoop();
+		//mainLoop();
+		// cleanup();
+		cleanup2();
 	}
 
 private:
@@ -292,9 +295,10 @@ private:
 		createColorResources();
 		//createDepthResources();
 		sdlCreateDepthResources();
+		createFramebuffers();
+		//createTextureImage();
+		sdlCreateTextureImage();
 
-		//createFramebuffers();
-		createTextureImage();
 		createTextureImageView();
 		createTextureSampler();
 		loadObjModel();
@@ -987,7 +991,7 @@ private:
 
 		stbi_image_free(pixels);
 
-		transferImageToBuffer(imgSrcBuffer, textureImage, mipLevels, texWidth, texHeight);
+		transferImageToBuffer(imgSrcBuffer, textureImage, mipLevels, texWidth, texHeight, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
 	}
@@ -1269,7 +1273,7 @@ private:
 		};
 
 		VmaAllocationInfo vBufferAllocInfo{};
-		VmaAllocation vBufferAllocation;
+		// VmaAllocation vBufferAllocation;
 		chk(vmaCreateBuffer(vmaAllocator, &bufferCI, &vBufferAllocCI, &vertexBuffer, &vBufferAllocation, &vBufferAllocInfo));
 		memcpy(vBufferAllocInfo.pMappedData, vertices.data(), vbufferSize);
 		memcpy(((char*)vBufferAllocInfo.pMappedData) + vbufferSize, indices.data(), ibufferSize);
@@ -1373,11 +1377,11 @@ private:
 
 	void recreateSwapChain() {
 		int width = 0, height = 0;
-		glfwGetFramebufferSize(window, &width, &height);
-		while (width == 0 || height == 0) {
-			glfwWaitEvents();
-			glfwGetFramebufferSize(window, &width, &height);
-		}
+		//glfwGetFramebufferSize(window, &width, &height);
+		//while (width == 0 || height == 0) {
+		//	glfwWaitEvents();
+		//	glfwGetFramebufferSize(window, &width, &height);
+		//}
 
 		vkDeviceWaitIdle(device);
 
@@ -2443,6 +2447,24 @@ private:
 		vkDeviceWaitIdle(device);
 	}
 
+	void sdlMainLoop() {
+		bool quit{ false };
+		while (!quit) {
+			SDL_Event event;
+			while (SDL_PollEvent(&event)) {
+				if (event.type == SDL_EVENT_QUIT) {
+					quit = true;
+				}
+				if (event.type == SDL_EVENT_WINDOW_RESIZED) {
+					framebufferResized = true;
+				}
+			}
+			drawFrame();
+		}
+
+		vkDeviceWaitIdle(device);
+	}
+
 	void drawFrame() {
 		vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -2523,7 +2545,40 @@ private:
 		vkDestroyImage(device, depthImage, nullptr);
 		vkFreeMemory(device, depthImageMemory, nullptr);
 
-		vkDestroyBuffer(device, vertexBuffer, nullptr);
+		 vkDestroyBuffer(device, vertexBuffer, nullptr);
+
+		for (auto framebuffer : swapChainFramebuffers) {
+			vkDestroyFramebuffer(device, framebuffer, nullptr);
+		}
+
+		vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+
+		vkDestroyPipeline(device, graphicsPipeline, nullptr);
+		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+		vkDestroyRenderPass(device, renderPass, nullptr);
+
+		for (auto imageView : swapChainImageViews) {
+			vkDestroyImageView(device, imageView, nullptr);
+		}
+
+		vkDestroySwapchainKHR(device, swapChain, nullptr);
+
+		for (size_t i = 0; i < uniformBuffers.size(); i++) {
+			vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+			vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+		}
+
+		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+	}
+
+	void cleanupSwapChain2() {
+		// msaa resources
+		vkDestroyImageView(device, colorImageView, nullptr);
+		vkDestroyImage(device, colorImage, nullptr);
+		vkFreeMemory(device, colorImageMemory, nullptr);
+
+		vkDestroyImageView(device, depthImageView, nullptr);
+		vmaDestroyImage(vmaAllocator, depthImage, depthImageAllocation);
 
 		for (auto framebuffer : swapChainFramebuffers) {
 			vkDestroyFramebuffer(device, framebuffer, nullptr);
@@ -2590,6 +2645,41 @@ private:
 		glfwDestroyWindow(window);
 
 		glfwTerminate();
+	}
+
+	void cleanup2() {
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			vkDestroySemaphore(device, renderFinishedSemaphore[i], nullptr);
+			vkDestroySemaphore(device, imageAvailableSemaphore[i], nullptr);
+			vkDestroyFence(device, inFlightFences[i], nullptr);
+		}
+
+		cleanupSwapChain2();
+
+		vkDestroySampler(device, textureSampler, nullptr);
+		vkDestroyImageView(device, textureImageView, nullptr);
+		vmaDestroyImage(vmaAllocator, textureImage, imageAllocation);
+
+		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+		vmaDestroyBuffer(vmaAllocator, vertexBuffer, vBufferAllocation);
+
+		vmaDestroyAllocator(vmaAllocator);
+
+		if (enableValidationLayers) {
+			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+		}
+
+		vkDestroyDevice(device, nullptr);
+		
+		vkDestroySurfaceKHR(instance, surface, nullptr);
+
+		vkDestroyInstance(instance, nullptr);
+
+		SDL_DestroyWindow(sdlWindow);
+
+		SDL_Quit();
 	}
 };
 
