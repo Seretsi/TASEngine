@@ -277,7 +277,8 @@ private:
 		initVulkanVolkContext();
 		//createInstance();
 		createVkInstanceVolk();
-		setupDebugMessenger();
+		//setupDebugMessenger();
+		volkSetupDebugMessenger();
 		//createSurface();
 		createSDLSurface();
 		pickPhysicalDevice();
@@ -1377,15 +1378,18 @@ private:
 
 	void recreateSwapChain() {
 		int width = 0, height = 0;
-		//glfwGetFramebufferSize(window, &width, &height);
-		//while (width == 0 || height == 0) {
-		//	glfwWaitEvents();
-		//	glfwGetFramebufferSize(window, &width, &height);
-		//}
+		SDL_GetWindowSizeInPixels(sdlWindow, &width, &height);
+		while (width == 0 || height == 0) {
+			SDL_Event event;
+			SDL_WaitEvent(&event);
+			// todo handle quit while minimized
+			SDL_GetWindowSizeInPixels(sdlWindow, &width, &height);
+		}
 
 		vkDeviceWaitIdle(device);
 
-		createSwapChain();
+		//createSwapChain();
+		sdlCreateSwapChain();
 		createImageViews();
 		createRenderPass();
 		createGraphicsPipeline();
@@ -1991,7 +1995,7 @@ private:
 		}
 		else {
 			int width, height;
-			chk(SDL_GetWindowSize(localWindow, &width, &height));
+			chk(SDL_GetWindowSizeInPixels(localWindow, &width, &height));
 
 			VkExtent2D actualExtent = {
 				static_cast<uint32_t>(width),
@@ -2160,12 +2164,12 @@ private:
 		}
 
 		VkPhysicalDeviceVulkan12Features enabledVk12Features{
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-		.descriptorIndexing = true,
-		.shaderSampledImageArrayNonUniformIndexing = true,
-		.descriptorBindingVariableDescriptorCount = true,
-		.runtimeDescriptorArray = true,
-		.bufferDeviceAddress = true
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+			.descriptorIndexing = true,
+			.shaderSampledImageArrayNonUniformIndexing = true,
+			.descriptorBindingVariableDescriptorCount = true,
+			.runtimeDescriptorArray = true,
+			.bufferDeviceAddress = true
 		};
 		VkPhysicalDeviceVulkan13Features enableVk13Features{
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -2241,8 +2245,11 @@ private:
 		VkPhysicalDeviceProperties deviceProperties;
 		vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
-		VkPhysicalDeviceFeatures supportedFeatures;
-		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
+		VkPhysicalDeviceFeatures2 supportedFeatures2{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+			.pNext = nullptr,
+		};
+		vkGetPhysicalDeviceFeatures2(device, &supportedFeatures2);
 
 		int score = 0;
 
@@ -2258,11 +2265,11 @@ private:
 			swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
 		}
 
-		score += findQueueFamilies(device).isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy ? 1000 : 0;
+		score += findQueueFamilies(device).isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures2.features.samplerAnisotropy ? 1000 : 0;
 
 		score += deviceProperties.limits.maxImageDimension2D;
 
-		if (!supportedFeatures.geometryShader) {
+		if (!supportedFeatures2.features.geometryShader) {
 			return 0;
 		}
 
@@ -2320,6 +2327,17 @@ private:
 		populateDebugMessengerCreateInfo(createInfo);
 
 		if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+			throw std::runtime_error("failed to set up debug messenger");
+		}
+	}
+
+	void volkSetupDebugMessenger() {
+		if (!enableValidationLayers) return;
+
+		VkDebugUtilsMessengerCreateInfoEXT createInfo;
+		populateDebugMessengerCreateInfo(createInfo);
+
+		if (vkCreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
 			throw std::runtime_error("failed to set up debug messenger");
 		}
 	}
@@ -2668,7 +2686,7 @@ private:
 		vmaDestroyAllocator(vmaAllocator);
 
 		if (enableValidationLayers) {
-			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+			vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 		}
 
 		vkDestroyDevice(device, nullptr);
